@@ -348,11 +348,15 @@ class Logger(object):
 Logger.DEFAULT = Logger.CURRENT = Logger(dir=None, output_formats=[HumanOutputFormat(sys.stdout)])
 
 def configure(dir=None, format_strs=None):
-    if dir is None:
-        dir = os.getenv('OPENAI_LOGDIR')
-    if dir is None:
-        dir = osp.join(tempfile.gettempdir(),
-            datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+    # if dir is None:
+    #     dir = os.getenv('OPENAI_LOGDIR')
+    # if dir is None:
+    #     dir = osp.join(tempfile.gettempdir(),
+    #         datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+    try:
+        dir += f"_{time.strftime('%Y%m%d%H%M%S', time.localtime())}" # get_time()
+    except:
+        pass
     assert isinstance(dir, str)
     os.makedirs(dir, exist_ok=True)
 

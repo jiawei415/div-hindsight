@@ -8,16 +8,37 @@ from baselines.her.ddpg import DDPG
 from baselines.her.her import make_sample_her_transitions, \
                               make_sample_her_transitions_diversity, \
                               make_sample_her_transitions_diversity_with_kdpp
+from bher.common.monitor import Monitor
+from bher.envs.multi_world_wrapper import PointGoalWrapper, SawyerGoalWrapper, ReacherGoalWrapper
 # some params
 DEFAULT_ENV_PARAMS = {
-    'FetchReach-v0': {
-        'n_cycles': 10,
-    },
+    'Point2D':
+        {'n_cycles': 1, 'batch_size': 64, 'n_batches': 5, 'subset_size':100},
+    'SawyerReach':
+        {'n_cycles': 5, 'batch_size': 64, 'n_batches': 5, 'subset_size':100},
+    'FetchReach':
+        {'n_cycles': 5, 'batch_size': 64, 'n_batches': 5, 'subset_size':100},
+    'Reacher-v2':
+        {'n_cycles': 15, 'batch_size': 64, 'n_batches': 5, 'subset_size':100},
+    'SawyerDoorPos-v1':
+        {'n_cycles': 10, 'batch_size': 64, 'n_batches': 5, 'subset_size':100},
+    'SawyerDoorAngle-v1':
+        {'n_cycles': 20, 'batch_size': 64, 'n_batches': 5, 'subset_size':100},
+    'SawyerDoorFixEnv-v1':
+        {'n_cycles': 50, 'batch_size': 256, 'n_batches': 40, 'subset_size':300},
+    'PointMass':
+        {'n_cycles': 50, 'batch_size': 256, 'n_batches': 40, 'subset_size':300},
+    'Fetch':
+        {'n_cycles': 50, 'batch_size': 256, 'n_batches': 40, 'subset_size':300},
+    'Hand':
+        {'n_cycles': 50, 'batch_size': 256, 'n_batches': 40, 'subset_size':300},
 }
+
 
 DEFAULT_PARAMS = {
     # env
     'max_u': 1.,  # max absolute value of actions on different coordinates
+    'max_episode_steps': 50,
     # ddpg
     'layers': 3,  # number of layers in the critic/actor networks
     'hidden': 256,  # number of neurons in each hidden layers
@@ -32,9 +53,9 @@ DEFAULT_PARAMS = {
     'relative_goals': False,
     # training
     'n_cycles': 50,  # per epoch
-    'rollout_batch_size': 2,  # per mpi thread
+    'rollout_batch_size': 1,  # per mpi thread
     'n_batches': 40,  # training batches per cycle
-    'batch_size': 64,  # per mpi thread, measured in transitions and reduced to even multiple of chunk_length.
+    'batch_size': 256,  # per mpi thread, measured in transitions and reduced to even multiple of chunk_length.
     'n_test_rollouts': 10,  # number of test rollouts per epoch, each consists of rollout_batch_size rollouts
     'test_with_polyak': False,  # run test episodes with the target network
     # exploration
@@ -46,6 +67,8 @@ DEFAULT_PARAMS = {
     # normalization
     'norm_eps': 0.01,  # epsilon used for observation normalization
     'norm_clip': 5,  # normalized observations are cropped to this values
+    # random init episode
+    'random_init': 20,
 
     # prioritized_replay (tderror) has been removed
     'alpha': 0.6, # 0.6
@@ -67,17 +90,40 @@ def cached_make_env(make_env):
     return CACHED_ENVS[make_env]
 
 def prepare_params(kwargs):
+    # default max episode steps
+    default_max_episode_steps = 50
     # DDPG params
     ddpg_params = dict()
 
     env_name = kwargs['env_name']
-    def make_env():
-        return gym.make(env_name)
+    def make_env(subrank=None):
+        try:
+            env = gym.make(env_name, rewrad_type='sparse')
+        except:
+            logger.log('Can not make sparse reward environment')
+            env = gym.make(env_name)
+        # add wrapper for multiworld environment
+        if env_name.startswith('Point'):
+            env = PointGoalWrapper(env)
+        elif env_name.startswith('Sawyer'):
+            env = SawyerGoalWrapper(env)
+        elif env_name.startswith('Reacher'):
+            env = ReacherGoalWrapper(env)
+        max_episode_steps = default_max_episode_steps
+        env = gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps)
+        if (subrank is not None and logger.get_dir() is not None):
+            try:
+                from mpi4py import MPI
+                mpi_rank = MPI.COMM_WORLD.Get_rank()
+            except ImportError:
+                MPI = None
+                mpi_rank = 0
+                logger.warn('Running with a single MPI process. This should work, but the results may differ from the ones publshed in Plappert et al.')
+            env =  Monitor(env, os.path.join(logger.get_dir(), str(mpi_rank) + '.' + str(subrank)), allow_early_resets=True)
+        return env
+
     kwargs['make_env'] = make_env
-    tmp_env = cached_make_env(kwargs['make_env'])
-    assert hasattr(tmp_env, '_max_episode_steps')
-    kwargs['T'] = tmp_env._max_episode_steps
-    tmp_env.reset()
+    kwargs['T'] = kwargs['max_episode_steps']
     kwargs['max_u'] = np.array(kwargs['max_u']) if type(kwargs['max_u']) == list else kwargs['max_u']
     kwargs['gamma'] = 1. - 1. / kwargs['T']
     if 'lr' in kwargs:
@@ -107,7 +153,7 @@ def log_params(params, logger=logger):
 def configure_her(params):
     env = cached_make_env(params['make_env'])
     env.reset()
-    def reward_fun(ag_2, g, info):  # vectorized
+    def reward_fun(ag_2, g, info={}):  # vectorized
         return env.compute_reward(achieved_goal=ag_2, desired_goal=g, info=info)
 
     # Prepare configuration for HER.
@@ -183,9 +229,9 @@ def configure_dims(params):
         'u': env.action_space.shape[0],
         'g': obs['desired_goal'].shape[0],
     }
-    for key, value in info.items():
-        value = np.array(value)
-        if value.ndim == 0:
-            value = value.reshape(1)
-        dims['info_{}'.format(key)] = value.shape[0]
+    # for key, value in info.items():
+    #     value = np.array(value)
+    #     if value.ndim == 0:
+    #         value = value.reshape(1)
+    #     dims['info_{}'.format(key)] = value.shape[0]
     return dims

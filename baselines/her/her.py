@@ -171,7 +171,8 @@ def make_sample_her_transitions_diversity_with_kdpp(replay_strategy, replay_k, s
             # it may have the problem that dpp idx is not equal to the batch size
             if len(dpp_idx) != batch_size:
                 # get the total index
-                total_idx = [i for i in range(subset_size)]
+                # total_idx = [i for i in range(subset_size)]
+                total_idx = np.arange(subset_size).tolist()
                 unselected_idx = list(set(total_idx) - set(dpp_idx))
                 rest_idx = np.random.choice(unselected_idx, size=batch_size - len(dpp_idx), replace=False)
                 sample_idx = np.concatenate([dpp_idx, rest_idx])
@@ -185,13 +186,13 @@ def make_sample_her_transitions_diversity_with_kdpp(replay_strategy, replay_k, s
             # assign back
             transitions = transitions_
         # Reconstruct info dictionary for reward computation.
-        info = {}
-        for key, value in transitions.items():
-            if key.startswith('info_'):
-                info[key.replace('info_', '')] = value
+        # info = {}
+        # for key, value in transitions.items():
+        #     if key.startswith('info_'):
+        #         info[key.replace('info_', '')] = value
         # Re-compute reward since we may have substituted the goal.
         reward_params = {k: transitions[k] for k in ['ag_2', 'g']}
-        reward_params['info'] = info
+        # reward_params['info'] = info
         transitions['r'] = reward_fun(**reward_params)
         transitions = {k: transitions[k].reshape(batch_size, *transitions[k].shape[1:])
                        for k in transitions.keys()}

@@ -82,10 +82,10 @@ class DDPG(object):
             self.stage_op = self.staging_tf.put(self.buffer_ph_tf)
             self._create_network(reuse=reuse)
         # Configure the replay buffer.
-        buffer_shapes = {key: (self.T if key != 'o' else self.T+1, *input_shapes[key])
+        buffer_shapes = {key: (self.T-1 if key != 'o' else self.T, *input_shapes[key])
                          for key, val in input_shapes.items()}
         buffer_shapes['g'] = (buffer_shapes['g'][0], self.dimg)
-        buffer_shapes['ag'] = (self.T+1, self.dimg)
+        buffer_shapes['ag'] = (self.T, self.dimg)
         buffer_size = (self.buffer_size // self.rollout_batch_size) * self.rollout_batch_size
         if self.prioritization == 'diversity':
             self.buffer = ReplayBufferDiversity(buffer_shapes, buffer_size, self.T, self.sample_transitions, \
@@ -234,8 +234,14 @@ class DDPG(object):
         if not self.buffer.current_size==0:
             if stage:
                 self.stage_batch(t)
-            critic_loss, actor_loss, Q_grad, pi_grad, td_error = self._grads()            
-            self._update(Q_grad, pi_grad)
+            # critic_loss, actor_loss, Q_grad, pi_grad, td_error = self._grads()            
+            # self._update(Q_grad, pi_grad)
+            critic_loss, actor_loss, _, _ = self.sess.run([
+                self.Q_loss_tf,
+                self.pi_loss_tf,
+                self.Q_train_op,
+                self.pi_train_op,
+            ])
             return critic_loss, actor_loss
 
     def _init_target_net(self):
@@ -317,9 +323,12 @@ class DDPG(object):
         self.pi_grads_vars_tf = zip(pi_grads_tf, self._vars('main/pi'))
         self.Q_grad_tf = flatten_grads(grads=Q_grads_tf, var_list=self._vars('main/Q'))
         self.pi_grad_tf = flatten_grads(grads=pi_grads_tf, var_list=self._vars('main/pi'))
-        # optimizers
-        self.Q_adam = MpiAdam(self._vars('main/Q'), scale_grad_by_procs=False)
-        self.pi_adam = MpiAdam(self._vars('main/pi'), scale_grad_by_procs=False)
+        # # optimizers
+        # self.Q_adam = MpiAdam(self._vars('main/Q'), scale_grad_by_procs=False)
+        # self.pi_adam = MpiAdam(self._vars('main/pi'), scale_grad_by_procs=False)
+        
+        self.Q_train_op = tf.train.AdamOptimizer(self.Q_lr).minimize(self.Q_loss_tf, var_list=self._vars('main/Q'))
+        self.pi_train_op  = tf.train.AdamOptimizer(self.pi_lr).minimize(self.pi_loss_tf, var_list=self._vars('main/pi'))
         # polyak averaging
         self.main_vars = self._vars('main/Q') + self._vars('main/pi')
         self.target_vars = self._vars('target/Q') + self._vars('target/pi')
@@ -330,7 +339,7 @@ class DDPG(object):
             map(lambda v: v[0].assign(self.polyak * v[0] + (1. - self.polyak) * v[1]), zip(self.target_vars, self.main_vars)))
         # initialize all variables
         tf.variables_initializer(self._global_vars('')).run()
-        self._sync_optimizers()
+        # self._sync_optimizers()
         self._init_target_net()
 
     def logs(self, prefix=''):

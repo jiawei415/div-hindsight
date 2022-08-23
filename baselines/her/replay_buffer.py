@@ -174,10 +174,10 @@ class ReplayBufferDiversity:
             diversity = np.array(diversity)
             diversity[diversity < 0] = 0
             diversity = np.sum(diversity, 0)
-            # calculate the accumulate rewards
-            mean_rewards = np.mean(buffers['info_is_success'].squeeze(), axis=1, keepdims=True)
-            # rewrad gains is useless here... can be removed
-            reward_gain = np.exp(mean_rewards)
+            # # calculate the accumulate rewards
+            # mean_rewards = np.mean(buffers['info_is_success'].squeeze(-1), axis=1, keepdims=True)
+            # # rewrad gains is useless here... can be removed
+            # reward_gain = np.exp(mean_rewards)
             # clip the diversity - 0.001
             episode_batch['div'] = np.clip(diversity.reshape(-1, 1), 0, clip_div)
         # write the data
