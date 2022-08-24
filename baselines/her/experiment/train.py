@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import click
 import numpy as np
 import json
@@ -51,6 +52,7 @@ def train(policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles
     best_success_rate = -1
     t = 1
     for epoch in range(n_epochs):
+        time_start = time.time()
         # train
         rollout_worker.clear_history()
         for cycle in tqdm(range(n_cycles)):
@@ -68,7 +70,10 @@ def train(policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles
         for _ in range(n_test_rollouts * rollout_num):
             evaluator.generate_rollouts()
         # record logs
+        time_end = time.time()
+        total_time = time_end - time_start
         logger.record_tabular('epoch', epoch)
+        logger.record_tabular('epoch/time(min)', total_time / 60)
         for key, val in evaluator.logs('test'):
             logger.record_tabular(key, mpi_average(val))
         for key, val in rollout_worker.logs('train'):
