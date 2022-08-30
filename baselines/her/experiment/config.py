@@ -40,6 +40,7 @@ DEFAULT_PARAMS = {
     'max_u': 1.,  # max absolute value of actions on different coordinates
     'max_episode_steps': 50,
     # ddpg
+    'k_heads': 1,
     'layers': 3,  # number of layers in the critic/actor networks
     'hidden': 256,  # number of neurons in each hidden layers
     'network_class': 'baselines.her.actor_critic:ActorCritic',
@@ -136,7 +137,7 @@ def prepare_params(kwargs):
                  'batch_size', 'Q_lr', 'pi_lr',
                  'norm_eps', 'norm_clip', 'max_u',
                  'action_l2', 'clip_obs', 'scope', 'relative_goals',
-                 'alpha', 'beta0', 'beta_iters', 'eps']:
+                 'alpha', 'beta0', 'beta_iters', 'eps', 'k_heads']:
         ddpg_params[name] = kwargs[name]
         kwargs['_' + name] = kwargs[name]
         del kwargs[name]

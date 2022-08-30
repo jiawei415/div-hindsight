@@ -3,7 +3,7 @@ from baselines.her.util import store_args, nn
 
 class ActorCritic:
     @store_args
-    def __init__(self, inputs_tf, dimo, dimg, dimu, max_u, o_stats, g_stats, hidden, layers,
+    def __init__(self, inputs_tf, dimo, dimg, dimu, max_u, o_stats, g_stats, hidden, layers, k_heads,
                  **kwargs):
         """The actor-critic network and related training code.
 
@@ -28,16 +28,36 @@ class ActorCritic:
         o = self.o_stats.normalize(self.o_tf)
         g = self.g_stats.normalize(self.g_tf)
         input_pi = tf.concat(axis=1, values=[o, g])  # for actor
+        input_Q = tf.concat(axis=1, values=[o, g, self.u_tf / self.max_u])  # for critic
+        self._input_Q = input_Q  # exposed for tests
 
-        # Networks.
-        with tf.variable_scope('pi'):
-            self.pi_tf = self.max_u * tf.tanh(nn(
-                input_pi, [self.hidden] * self.layers + [self.dimu]))
-        with tf.variable_scope('Q'):
-            # for policy training
-            input_Q = tf.concat(axis=1, values=[o, g, self.pi_tf / self.max_u])
-            self.Q_pi_tf = nn(input_Q, [self.hidden] * self.layers + [1])
+
+        self.share_layers = self.layers - 1
+        self.layers = 1
+        self.pi_tf_dict, self.Q_pi_tf_dict, self.Q_tf_dict, share_Q_pi_tf_dict = {}, {}, {}, {}
+
+        # Actor Networks.
+        with tf.variable_scope('shared_pi'):
+            share_pi_tf = tf.tanh(nn(input_pi, [self.hidden] * self.share_layers))
+        for i in range(self.k_heads):
+            with tf.variable_scope(f'pi_{i}'):
+                pi_tf = self.max_u * tf.tanh(nn(
+                    share_pi_tf, [self.hidden] * self.layers + [self.dimu]))
+            self.pi_tf_dict[i] = pi_tf
+        # Critic Networks.
+        with tf.variable_scope("shared_Q"):
             # for critic training
-            input_Q = tf.concat(axis=1, values=[o, g, self.u_tf / self.max_u])
-            self._input_Q = input_Q  # exposed for tests
-            self.Q_tf = nn(input_Q, [self.hidden] * self.layers + [1], reuse=True)
+            share_Q_tf = nn(input_Q, [self.hidden] * self.share_layers)
+            # for policy training
+            for i in range(self.k_heads):
+                input_Q_pi = tf.concat(axis=1, values=[o, g, self.pi_tf_dict[i] / self.max_u])
+                share_Q_pi_tf = nn(input_Q_pi, [self.hidden] * self.share_layers, reuse=True)
+                share_Q_pi_tf_dict[i] = share_Q_pi_tf
+        for i in range(self.k_heads):
+            with tf.variable_scope(f'Q_{i}'):
+                # for critic training
+                Q_tf = nn(share_Q_tf, [self.hidden] * self.layers + [1])
+                # for policy training
+                Q_pi_tf = nn(share_Q_pi_tf_dict[i], [self.hidden] * self.layers + [1], reuse=True)
+            self.Q_tf_dict[i] = Q_tf
+            self.Q_pi_tf_dict[i] = Q_pi_tf

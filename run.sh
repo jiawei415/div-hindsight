@@ -1,7 +1,7 @@
 #!/bin/sh
 envname=$1
 seed=$2
-num_env=1
+k_heads=16
 
 export CUDA_VISIBLE_DEVICES=$3
 
@@ -14,19 +14,19 @@ do
     tag=$(date "+%Y%m%d%H%M%S")
     if [ $(echo $envname | grep "Fetch")x != ""x ];then
         echo "Fetch"
-        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --num_env ${num_env} --clip_div 0.001 \
+        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --k_heads ${k_heads} --clip_div 0.001 \
         --logdir $logdir > ~/logs/${envname}_${tag}.out 2> ~/logs/${envname}_${tag}.err &
     elif [ $(echo $envname | grep "Rotate")x != ""x ];then
         echo "Rotate"
-        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --num_env ${num_env} --goal_type rotate --sigma 0.1 \
+        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --k_heads ${k_heads} --goal_type rotate --sigma 0.1 \
         --logdir $logdir > ~/logs/${envname}_${tag}.out 2> ~/logs/${envname}_${tag}.err &
     elif [ $(echo $envname | grep "Full")x != ""x ];then
         echo "Full"
-        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --num_env ${num_env} --goal_type full --sigma 0.1 \
+        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --k_heads ${k_heads} --goal_type full --sigma 0.1 \
         --logdir $logdir > ~/logs/${envname}_${tag}.out 2> ~/logs/${envname}_${tag}.err &
     else
         echo "$env_name"
-        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --num_env ${num_env} \
+        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --k_heads ${k_heads} \
         --logdir $logdir > ~/logs/${envname}_${tag}.out 2> ~/logs/${envname}_${tag}.err &
     fi
     echo "run $envname $seed $tag"
