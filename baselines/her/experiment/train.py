@@ -42,11 +42,10 @@ def train(policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles
         logger.info('Random initializing ...')
         rollout_worker.clear_history()
         # rollout_worker.render = True
-        random_num = int(random_init) // rollout_worker.rollout_batch_size // policy.k_heads
+        random_num = int(random_init) // (rollout_num * policy.k_heads) * (rollout_num * policy.k_heads)
         for epi in range(random_num):
-            for head in range(policy.k_heads):
-                episode = rollout_worker.generate_rollouts(head, random_ac=True)
-                policy.store_episode(episode, dump_buffer, clip_div)
+            episode = rollout_worker.generate_rollouts(0, random_ac=True)
+            policy.store_episode(episode, dump_buffer, clip_div)
 
     # for the training
     logger.info("Training...")
@@ -57,8 +56,9 @@ def train(policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles
         # train
         rollout_worker.clear_history()
         for cycle in tqdm(range(n_cycles)):
-            for head in range(policy.k_heads):
-                episode = rollout_worker.generate_rollouts(head)
+            for head in range(policy.k_heads * rollout_num):
+                kth_head = 0 if policy.k_heads == 1 else head
+                episode = rollout_worker.generate_rollouts(kth_head)
                 policy.store_episode(episode, dump_buffer, clip_div)
             for batch in tqdm(range(n_batches)):
             # for batch in range(n_batches):
@@ -242,8 +242,8 @@ def launch(env, num_env, k_heads, rollout_num,
 @click.option('--use_kdpp', type=bool, default=True, help='whether or not use kdpp')
 @click.option('--subset_size', type=int, default=100, help='the subset size for the k-dpp')
 @click.option('--sigma', type=float, default=0.5, help='the sigma of the rbf kernel, fetch use 0.5, and hand use 0.1')
-@click.option('--rollout_num', type=int, default=1, help='the number of network head')
-@click.option('--k_heads', type=int, default=16, help='the number of network head')
+@click.option('--rollout_num', type=int, default=16, help='the number of network head')
+@click.option('--k_heads', type=int, default=1, help='the number of network head')
 
 def main(**kwargs):
     env = build_env(kwargs, _game_envs)
