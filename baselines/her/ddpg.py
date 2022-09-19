@@ -326,12 +326,12 @@ class DDPG(object):
             pi_loss_tf = -tf.reduce_mean(main_Q_pi_tf) + self.action_l2 * tf.reduce_mean(pi_reg_tf)
             self.pi_loss_ops[i] = pi_loss_tf
             # update main net ops
-            main_Q_vars = self._vars('main/shared_Q') + self._vars(f'main/Q_{i}')
-            main_pi_vars = self._vars('main/shared_pi') + self._vars(f'main/pi_{i}')
+            main_Q_vars = self._vars('main/shared_Q') + self._vars(f'main/Q_{i}/')
+            main_pi_vars = self._vars('main/shared_pi') + self._vars(f'main/pi_{i}/')
             Q_grads_tf = tf.gradients(Q_loss_tf, main_Q_vars)
             pi_grads_tf = tf.gradients(pi_loss_tf, main_pi_vars)
             assert len(main_Q_vars) == len(Q_grads_tf)
-            assert len(pi_grads_tf) == len(pi_grads_tf)
+            assert len(main_pi_vars) == len(pi_grads_tf)
             self.Q_grads[i] = flatten_grads(grads=Q_grads_tf, var_list=main_Q_vars)
             self.pi_grads[i] = flatten_grads(grads=pi_grads_tf, var_list=main_pi_vars)
             self.Q_adams[i] = MpiAdam(main_Q_vars, scale_grad_by_procs=False)
@@ -340,7 +340,7 @@ class DDPG(object):
             # self.pi_train_ops[i] = tf.train.AdamOptimizer(self.pi_lr).minimize(pi_loss_tf, var_list=main_pi_vars)
             # update target net ops
             main_vars = main_Q_vars + main_pi_vars
-            target_vars = self._vars(f'target/shared_Q') + self._vars(f'target/Q_{i}') + self._vars('target/shared_pi') + self._vars(f'target/pi_{i}')
+            target_vars = self._vars(f'target/shared_Q') + self._vars(f'target/Q_{i}/') + self._vars('target/shared_pi') + self._vars(f'target/pi_{i}/')
             self.update_target_net_ops[i] = list(
                 map(lambda v: v[0].assign(self.polyak * v[0] + (1. - self.polyak) * v[1]), zip(target_vars, main_vars))) # polyak averaging
 

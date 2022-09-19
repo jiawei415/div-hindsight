@@ -1,10 +1,13 @@
 #!/bin/sh
-envname=$1
-seed=$2
-rollout_num=1
-k_heads=16
 
-export CUDA_VISIBLE_DEVICES=$3
+cuda_id=$1
+seed=$2
+env_name=$3
+
+rollout_num=2
+k_heads=1
+num_cpu=19
+
 
 logdir="~/results/her"
 # logdir="/root/gpu_ceph/ztjiaweixu/her"
@@ -12,30 +15,31 @@ logdir="~/results/her"
 time=2
 for i in $(seq 1)
 do
+    export CUDA_VISIBLE_DEVICES=$cuda_id
     tag=$(date "+%Y%m%d%H%M%S")
-    if [ $(echo $envname | grep "Fetch")x != ""x ];then
+    if [ $(echo $env_name | grep "Fetch")x != ""x ];then
         echo "Fetch"
-        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --k_heads ${k_heads} --rollout_num ${rollout_num} --clip_div 0.001 \
-        --logdir $logdir > ~/logs/${envname}_${tag}.out 2> ~/logs/${envname}_${tag}.err &
-    elif [ $(echo $envname | grep "Rotate")x != ""x ];then
+        python -m baselines.her.experiment.train --env_name ${env_name} --seed ${seed} --k_heads ${k_heads} --rollout_num ${rollout_num} --num_cpu ${num_cpu} --clip_div 0.001 \
+        --logdir $logdir > ~/logs/${env_name}_${tag}.out 2> ~/logs/${env_name}_${tag}.err &
+    elif [ $(echo $env_name | grep "Rotate")x != ""x ];then
         echo "Rotate"
-        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --k_heads ${k_heads} --rollout_num ${rollout_num} --goal_type rotate --sigma 0.1 \
-        --logdir $logdir > ~/logs/${envname}_${tag}.out 2> ~/logs/${envname}_${tag}.err &
-    elif [ $(echo $envname | grep "Full")x != ""x ];then
+        python -m baselines.her.experiment.train --env_name ${env_name} --seed ${seed} --k_heads ${k_heads} --rollout_num ${rollout_num} --num_cpu ${num_cpu} --goal_type rotate --sigma 0.1 \
+        --logdir $logdir > ~/logs/${env_name}_${tag}.out 2> ~/logs/${env_name}_${tag}.err &
+    elif [ $(echo $env_name | grep "Full")x != ""x ];then
         echo "Full"
-        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --k_heads ${k_heads} --rollout_num ${rollout_num} --goal_type full --sigma 0.1 \
-        --logdir $logdir > ~/logs/${envname}_${tag}.out 2> ~/logs/${envname}_${tag}.err &
+        python -m baselines.her.experiment.train --env_name ${env_name} --seed ${seed} --k_heads ${k_heads} --rollout_num ${rollout_num} --num_cpu ${num_cpu} --goal_type full --sigma 0.1 \
+        --logdir $logdir > ~/logs/${env_name}_${tag}.out 2> ~/logs/${env_name}_${tag}.err &
     else
         echo "$env_name"
-        python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --k_heads ${k_heads} --rollout_num ${rollout_num} \
-        # --logdir $logdir > ~/logs/${envname}_${tag}.out 2> ~/logs/${envname}_${tag}.err &
+        python -m baselines.her.experiment.train --env_name ${env_name} --seed ${seed} --k_heads ${k_heads} --rollout_num ${rollout_num} \
+        --logdir $logdir > ~/logs/${env_name}_${tag}.out 2> ~/logs/${env_name}_${tag}.err &
     fi
-    echo "run $envname $seed $tag"
+    echo "run $env_name $seed $tag"
     let seed=$seed+1
+    let cuda_id=$cuda_id+1
     sleep ${time}
 done
 
-# ps -ef | grep ${envname} | awk '{print $2}'| xargs kill -9
 # ps -ef | grep baselines | awk '{print $2}'| xargs kill -9
 
 # MazeA-v1, MazeB-v1, MazeC-v1, MazeD-v1
