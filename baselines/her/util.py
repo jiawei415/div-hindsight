@@ -83,7 +83,7 @@ def install_mpi_excepthook():
     sys.excepthook = new_hook
 
 
-def mpi_fork(n, binding="core"):
+def mpi_fork(n, extra_mpi_args=[]):
     """Re-launches the current script with workers
     Returns "parent" for original parent, "child" for MPI children
     """
@@ -97,24 +97,10 @@ def mpi_fork(n, binding="core"):
             IN_MPI="1"
         )
         # "-bind-to core" is crucial for good performance
-        if platform.system() == 'Darwin':
-            args = [
-                "mpirun",
-                "-np",
-                str(n),
-                "-allow-run-as-root",
-                sys.executable
-            ]
-        else:
-            args = [
-            "mpirun",
-            "-np",
-            str(n),
-            "-bind-to",
-            binding, # core or none
-            "-allow-run-as-root",
-            sys.executable
-        ]
+        args = ["mpirun", "-np", str(n)] + \
+            extra_mpi_args + \
+            [sys.executable]
+
         args += sys.argv
         subprocess.check_call(args, env=env)
         return "parent"

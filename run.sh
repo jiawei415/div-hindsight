@@ -1,8 +1,8 @@
 #!/bin/sh
 envname=$1
 seed=$2
-rollout_num=16
-k_heads=1
+rollout_num=1
+k_heads=16
 
 export CUDA_VISIBLE_DEVICES=$3
 
@@ -28,7 +28,7 @@ do
     else
         echo "$env_name"
         python -m baselines.her.experiment.train --env_name ${envname} --seed ${seed} --k_heads ${k_heads} --rollout_num ${rollout_num} \
-        --logdir $logdir > ~/logs/${envname}_${tag}.out 2> ~/logs/${envname}_${tag}.err &
+        # --logdir $logdir > ~/logs/${envname}_${tag}.out 2> ~/logs/${envname}_${tag}.err &
     fi
     echo "run $envname $seed $tag"
     let seed=$seed+1

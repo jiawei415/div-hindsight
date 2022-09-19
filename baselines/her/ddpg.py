@@ -189,23 +189,23 @@ class DDPG(object):
         self.buffer.dump_buffer(epoch)
 
     def _sync_optimizers(self):
-        self.Q_adam.sync()
-        self.pi_adam.sync()
+        for i in range(self.k_heads):
+            self.Q_adams[i].sync()
+            self.pi_adams[i].sync()
 
-    def _grads(self):
+    def _grads(self, kth_head):
         # Avoid feed_dict here for performance!
-        critic_loss, actor_loss, Q_grad, pi_grad, td_error = self.sess.run([
-            self.Q_loss_tf,
-            self.main.Q_pi_tf,
-            self.Q_grad_tf,
-            self.pi_grad_tf,
-            self.td_error_tf
+        critic_loss, actor_loss, Q_grad, pi_grad = self.sess.run([
+            self.Q_loss_ops[kth_head],
+            self.main.Q_pi_tf_dict[kth_head],
+            self.Q_grads[kth_head],
+            self.pi_grads[kth_head],
         ])
-        return critic_loss, actor_loss, Q_grad, pi_grad, td_error
+        return critic_loss, actor_loss, Q_grad, pi_grad
 
-    def _update(self, Q_grad, pi_grad):
-        self.Q_adam.update(Q_grad, self.Q_lr)
-        self.pi_adam.update(pi_grad, self.pi_lr)
+    def _update(self, kth_head, Q_grad, pi_grad):
+        self.Q_adams[kth_head].update(Q_grad, self.Q_lr)
+        self.pi_adams[kth_head].update(pi_grad, self.pi_lr)
 
     def sample_batch(self, t):
         if self.prioritization == 'diversity':
@@ -235,14 +235,14 @@ class DDPG(object):
             for i in range(self.k_heads):
                 if stage:
                     self.stage_batch(t)
-                # critic_loss, actor_loss, Q_grad, pi_grad, td_error = self._grads()
-                # self._update(Q_grad, pi_grad)
-                critic_loss, actor_loss, _, _ = self.sess.run([
-                    self.Q_loss_ops[i],
-                    self.pi_loss_ops[i],
-                    self.Q_train_ops[i],
-                    self.pi_train_ops[i],
-                ])
+                critic_loss, actor_loss, Q_grad, pi_grad = self._grads(i)
+                self._update(i, Q_grad, pi_grad)
+                # critic_loss, actor_loss, _, _ = self.sess.run([
+                #     self.Q_loss_ops[i],
+                #     self.pi_loss_ops[i],
+                #     self.Q_train_ops[i],
+                #     self.pi_train_ops[i],
+                # ])
                 self.critic_loss_dict[i].append(critic_loss)
                 self.actor_loss_dict[i].append(actor_loss)
 
@@ -307,6 +307,8 @@ class DDPG(object):
         assert len(self._vars("main")) == len(self._vars("target"))
 
         # build ops for train
+        self.Q_adams, self.pi_adams = {}, {}
+        self.Q_grads, self.pi_grads = {}, {}
         self.Q_loss_ops, self.pi_loss_ops = {}, {}
         self.Q_train_ops, self.pi_train_ops = {}, {}
         self.update_target_net_ops = {}
@@ -326,8 +328,16 @@ class DDPG(object):
             # update main net ops
             main_Q_vars = self._vars('main/shared_Q') + self._vars(f'main/Q_{i}')
             main_pi_vars = self._vars('main/shared_pi') + self._vars(f'main/pi_{i}')
-            self.Q_train_ops[i] = tf.train.AdamOptimizer(self.Q_lr).minimize(Q_loss_tf, var_list=main_Q_vars)
-            self.pi_train_ops[i] = tf.train.AdamOptimizer(self.pi_lr).minimize(pi_loss_tf, var_list=main_pi_vars)
+            Q_grads_tf = tf.gradients(Q_loss_tf, main_Q_vars)
+            pi_grads_tf = tf.gradients(pi_loss_tf, main_pi_vars)
+            assert len(main_Q_vars) == len(Q_grads_tf)
+            assert len(pi_grads_tf) == len(pi_grads_tf)
+            self.Q_grads[i] = flatten_grads(grads=Q_grads_tf, var_list=main_Q_vars)
+            self.pi_grads[i] = flatten_grads(grads=pi_grads_tf, var_list=main_pi_vars)
+            self.Q_adams[i] = MpiAdam(main_Q_vars, scale_grad_by_procs=False)
+            self.pi_adams[i] = MpiAdam(main_pi_vars, scale_grad_by_procs=False)
+            # self.Q_train_ops[i] = tf.train.AdamOptimizer(self.Q_lr).minimize(Q_loss_tf, var_list=main_Q_vars)
+            # self.pi_train_ops[i] = tf.train.AdamOptimizer(self.pi_lr).minimize(pi_loss_tf, var_list=main_pi_vars)
             # update target net ops
             main_vars = main_Q_vars + main_pi_vars
             target_vars = self._vars(f'target/shared_Q') + self._vars(f'target/Q_{i}') + self._vars('target/shared_pi') + self._vars(f'target/pi_{i}')
@@ -338,6 +348,7 @@ class DDPG(object):
         self.init_target_net_op = list(map(lambda v: v[0].assign(v[1]), zip(target_vars, main_vars)))
 
         self.sess.run(tf.variables_initializer(self._global_vars(""))) # init global vars
+        self._sync_optimizers()
         self._init_target_net()
         self.critic_loss_dict, self.actor_loss_dict = {k: [] for k in range(self.k_heads)}, {k: [] for k in range(self.k_heads)}
 

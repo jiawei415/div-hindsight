@@ -42,13 +42,16 @@ def train(policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles
         logger.info('Random initializing ...')
         rollout_worker.clear_history()
         # rollout_worker.render = True
-        random_num = int(random_init) // (rollout_num * policy.k_heads) * (rollout_num * policy.k_heads)
+        random_num = int(random_init) // rollout_worker.rollout_batch_size
         for epi in range(random_num):
-            episode = rollout_worker.generate_rollouts(0, random_ac=True)
+            # episode = rollout_worker.generate_rollouts(0, random_ac=True)
+            # policy.store_episode(episode, dump_buffer, clip_div)
+            episode = rollout_worker.generate_rollouts(random_ac=True)
             policy.store_episode(episode, dump_buffer, clip_div)
 
     # for the training
     logger.info("Training...")
+    num_rollout = 0
     best_success_rate = -1
     t = 1
     for epoch in range(n_epochs):
@@ -56,10 +59,15 @@ def train(policy, rollout_worker, evaluator, n_epochs, n_test_rollouts, n_cycles
         # train
         rollout_worker.clear_history()
         for cycle in tqdm(range(n_cycles)):
-            for head in range(policy.k_heads * rollout_num):
-                kth_head = 0 if policy.k_heads == 1 else head
+            kth_head = num_rollout % policy.k_heads
+            for _ in range(rollout_num):
                 episode = rollout_worker.generate_rollouts(kth_head)
                 policy.store_episode(episode, dump_buffer, clip_div)
+            num_rollout += 1
+            # for head in range(policy.k_heads * rollout_num):
+            #     kth_head = 0 if policy.k_heads == 1 else head
+            #     episode = rollout_worker.generate_rollouts(kth_head)
+            #     policy.store_episode(episode, dump_buffer, clip_div)
             for batch in tqdm(range(n_batches)):
             # for batch in range(n_batches):
                 #print('[{}] Epoch: {}, Cycle: {}, Batch: {}'.format(datetime.datetime.now(), epoch, cycle, batch))
@@ -110,12 +118,12 @@ def launch(env, num_env, k_heads, rollout_num,
     prioritization, binding, logging, version, dump_buffer, n_cycles,
     clip_div, logdir, goal_type, use_kdpp, subset_size, sigma, override_params={}, save_policies=False):
     # Fork for multi-CPU MPI implementation.
-    # if num_cpu > 1:
-    #     whoami = mpi_fork(num_cpu, binding)
-    #     if whoami == 'parent':
-    #         sys.exit(0)
-    #     import baselines.common.tf_util as U
-    #     U.single_threaded_session().__enter__()
+    if num_cpu > 1:
+        whoami = mpi_fork(num_cpu)
+        if whoami == 'parent':
+            sys.exit(0)
+        import bher.common.tf_util as U
+        U.single_threaded_session().__enter__()
     override_params.update({"k_heads": k_heads, "rollout_num": rollout_num})
     rank = MPI.COMM_WORLD.Get_rank()
     # Configure logging
@@ -242,7 +250,7 @@ def launch(env, num_env, k_heads, rollout_num,
 @click.option('--use_kdpp', type=bool, default=True, help='whether or not use kdpp')
 @click.option('--subset_size', type=int, default=100, help='the subset size for the k-dpp')
 @click.option('--sigma', type=float, default=0.5, help='the sigma of the rbf kernel, fetch use 0.5, and hand use 0.1')
-@click.option('--rollout_num', type=int, default=16, help='the number of network head')
+@click.option('--rollout_num', type=int, default=2, help='the number of rollout per cycle')
 @click.option('--k_heads', type=int, default=1, help='the number of network head')
 
 def main(**kwargs):
